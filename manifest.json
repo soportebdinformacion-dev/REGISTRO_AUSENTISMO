@@ -1,0 +1,13 @@
+{
+  "short_name": "AusentismoApp",
+  "name": "Agrícola Huarmey - Ausentismo Placas",
+  "icons": [
+    { "src": "icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any maskable" },
+    { "src": "icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any maskable" }
+  ],
+  "start_url": "./index.html",
+  "background_color": "#FFFFFF",
+  "theme_color": "#1F5C3A",
+  "display": "standalone",
+  "orientation": "portrait"
+}

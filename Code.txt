@@ -1,0 +1,123 @@
+// ===== Backend Apps Script — pensado para ~160 usuarios simultáneos =====
+// Claves: escritura por lotes + LockService, idempotencia por ID, maestros en caché.
+const HEADERS = ['fechaRegistro','placa','ruta','dni','nombre','fechaFalta','motivo','observaciones','vasARegresar','fechaRetorno','id','estado'];
+const ID_COL = HEADERS.indexOf('id') + 1;
+const CACHE_SECONDS = 300;   // los maestros nuevos aparecen en la app en <= 5 min
+const CHUNK = 30000;         // caracteres por pieza (límite de CacheService: 100 KB)
+const MAX_BATCH = 50;
+
+function doGet(e) {
+  const p = (e && e.parameter) || {};
+  if (p.action === 'GET_MASTERS') return json(getMasters(p.v || ''));
+  return json({ status: 'ERROR', message: 'Acción GET no válida' });
+}
+
+function doPost(e) {
+  try {
+    const data = JSON.parse(e.postData.contents);
+    if (data.action !== 'SYNC_AUSENTISMOS') return json({ status: 'ERROR', message: 'Acción no válida' });
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(20000)) return json({ status: 'BUSY' }); // el cliente reintenta con espera
+    try {
+      return json(saveRecords((data.records || []).slice(0, MAX_BATCH)));
+    } finally {
+      lock.releaseLock();
+    }
+  } catch (err) {
+    return json({ status: 'ERROR', message: String(err) });
+  }
+}
+
+function saveRecords(records) {
+  const sheet = getSheet('Ausentismos', true);
+  const last = sheet.getLastRow();
+  const known = new Set(last > 1 ? sheet.getRange(2, ID_COL, last - 1, 1).getValues().map(r => String(r[0])) : []);
+  const saved = [], duplicates = [], rejected = [], rows = [];
+
+  records.forEach(r => {
+    if (!r || !r.id) return;
+    if (known.has(r.id)) { duplicates.push(r.id); return; } // reintento: ya estaba guardado
+    if (!/^\d{8}$/.test(String(r.dni)) || !r.placa || !r.fechaFalta || !r.motivo) {
+      rejected.push({ id: r.id, reason: 'Datos incompletos o DNI inválido' });
+      return;
+    }
+    known.add(r.id);
+    rows.push(HEADERS.map(h => h === 'estado' ? 'SINCRONIZADO' : h === 'fechaRegistro' ? fmtFechaHora(r.fechaRegistro) : (r[h] === undefined ? '' : r[h])));
+    saved.push(r.id);
+  });
+
+  if (rows.length) {
+    sheet.getRange(last + 1, 1, rows.length, 1).setNumberFormat('@'); // fecha/hora como texto: 20/4/2026, 11:27:42 a. m.
+    sheet.getRange(last + 1, HEADERS.indexOf('dni') + 1, rows.length, 1).setNumberFormat('@'); // conserva ceros del DNI
+    sheet.getRange(last + 1, 1, rows.length, HEADERS.length).setValues(rows);
+    SpreadsheetApp.flush();
+  }
+  return { status: 'SUCCESS', saved, duplicates, rejected };
+}
+
+// "20/4/2026, 11:27:42 a. m." en hora de Perú, sin depender del celular
+function fmtFechaHora(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return iso || '';
+  const tz = 'America/Lima';
+  const ampm = Number(Utilities.formatDate(d, tz, 'H')) < 12 ? 'a. m.' : 'p. m.';
+  return Utilities.formatDate(d, tz, 'd/M/yyyy, h:mm:ss') + ' ' + ampm;
+}
+
+function getMasters(clientVersion) {
+  const cache = CacheService.getScriptCache();
+  let raw = readChunks(cache, 'masters');
+  if (!raw) {
+    raw = JSON.stringify({
+      maestros: getSheetData('Maestros', ['placa', 'ruta']),
+      personal: getSheetData('Personal', ['dni', 'nombre'])
+    });
+    writeChunks(cache, 'masters', raw);
+  }
+  const version = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, raw));
+  if (clientVersion === version) return { status: 'OK', unchanged: true, version }; // respuesta mínima
+  const d = JSON.parse(raw);
+  d.status = 'OK'; d.version = version;
+  return d;
+}
+
+// ---- Helpers ----
+function writeChunks(cache, key, str) {
+  const obj = {}; let n = 0;
+  for (let i = 0; i < str.length; i += CHUNK) obj[key + '_' + n++] = str.substring(i, i + CHUNK);
+  obj[key + '_n'] = String(n);
+  cache.putAll(obj, CACHE_SECONDS);
+}
+
+function readChunks(cache, key) {
+  const n = Number(cache.get(key + '_n'));
+  if (!n) return null;
+  const keys = Array.from({ length: n }, (_, i) => key + '_' + i);
+  const got = cache.getAll(keys);
+  return keys.every(k => got[k] !== undefined) ? keys.map(k => got[k]).join('') : null;
+}
+
+function getSheet(name, create) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheets().find(s => s.getName().toLowerCase() === name.toLowerCase());
+  if (!sh && create) { sh = ss.insertSheet(name); sh.appendRow(HEADERS); sh.setFrozenRows(1); }
+  return sh || null;
+}
+
+// Sheets guarda el DNI como número y pierde los ceros: 2354605 -> 02354605
+function normDni(v) {
+  const s = String(v == null ? '' : v).replace(/\D/g, '');
+  return s && s.length < 8 ? s.padStart(8, '0') : s;
+}
+
+function getSheetData(sheetName, keys) {
+  const sheet = getSheet(sheetName, false);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  return sheet.getRange(2, 1, sheet.getLastRow() - 1, keys.length).getValues()
+    .map(row => { const o = {}; keys.forEach((k, i) => o[k] = k === 'dni' ? normDni(row[i]) : String(row[i] ?? '').trim()); return o; })
+    .filter(o => o[keys[0]]);
+}
+
+function json(data) {
+  return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(ContentService.MimeType.JSON);
+}
