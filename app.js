@@ -1,5 +1,5 @@
 // PEGAR AQUÍ la URL de la implementación (Aplicación web) del Apps Script del archivo AUSENTISMO_PLACAS
-const GAS_ENDPOINT = 'PEGAR_URL_DE_IMPLEMENTACION_AQUI';
+const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycby_TcvBLKnW85Mt_QZX1mYN_EiK6S2tyxPo3ZN74EwOxBJFQWQ-1dU7He6I7BTne4KEbg/exec';
 const BATCH_SIZE = 25;          // registros por envío
 const SYNC_EVERY_MS = 60000;    // revisión periódica (solo envía si hay pendientes)
 
