@@ -1,7 +1,8 @@
 // PEGAR AQUÍ la URL de la implementación (Aplicación web) del Apps Script del archivo AUSENTISMO_PLACAS
-const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycby_TcvBLKnW85Mt_QZX1mYN_EiK6S2tyxPo3ZN74EwOxBJFQWQ-1dU7He6I7BTne4KEbg/exec';
+const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzbTKD07WF4C1nxbS43hZrwQTxm9zVo4uq1ggwk0ot8m3rBLqyapGIyOpP9wh-l88AHyQ/exec';
 const BATCH_SIZE = 25;          // registros por envío
 const SYNC_EVERY_MS = 60000;    // revisión periódica (solo envía si hay pendientes)
+const MASTERS_KEY = 'mastersVersionAus2'; // cambiar este valor fuerza a todos los equipos a volver a descargar el padrón
 
 const $ = id => document.getElementById(id);
 const rand = (min, max) => min + Math.random() * (max - min);
@@ -76,7 +77,8 @@ let personalIdx = [], lastResults = [];
 const norm = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
 async function loadPersonal() {
-  personalIdx = (await DB.getAllPersonal()).map(p => ({ dni: p.dni, nombre: p.nombre, words: norm(p.nombre).split(' ') }));
+  // normDni (db.js) completa los ceros iniciales: 2354605 -> 02354605
+  personalIdx = (await DB.getAllPersonal()).map(p => ({ dni: normDni(p.dni), nombre: p.nombre, words: norm(p.nombre).split(' ') }));
 }
 
 // Sin importar mayúsculas, tildes ni orden; cada palabra escrita puede ser el inicio de una del nombre
@@ -99,7 +101,7 @@ function showResults(list, emptyMsg) {
 
 function elegir(p) {
   if (!p) return;
-  $('dni').value = p.dni; $('nombre').value = p.nombre; $('buscar').value = p.nombre;
+  $('dni').value = normDni(p.dni); $('nombre').value = p.nombre; $('buscar').value = p.nombre;
   $('buscar').classList.remove('invalid');
   showResults([]);
   const hint = $('dni-alert'); hint.textContent = 'Trabajador seleccionado'; hint.className = 'hint good';
@@ -126,7 +128,7 @@ function initDefaults() {
 function validate() {
   const bad = [];
   const check = (id, ok) => { $(id).classList.toggle('invalid', !ok); if (!ok) bad.push(id); };
-  check('buscar', /^\d{8}$/.test($('dni').value));
+  check('buscar', /^\d{8}$/.test(normDni($('dni').value)));
   check('fechaFalta', !!$('fechaFalta').value);
   check('motivo', !!$('motivo').value);
   if (getRadio('vasARegresar') === 'SI' && getRadio('tipoRetorno') === 'Específica') check('fechaRetorno', !!$('fechaRetorno').value && $('fechaRetorno').value >= $('fechaFalta').value);
@@ -141,7 +143,7 @@ async function handleFormSubmit(e) {
   const record = {
     id: 'REG-' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)),
     fechaRegistro: new Date().toISOString(),
-    dni: $('dni').value, nombre: $('nombre').value,
+    dni: normDni($('dni').value), nombre: $('nombre').value,
     fechaFalta: $('fechaFalta').value, motivo: $('motivo').value,
     vasARegresar: getRadio('vasARegresar'),
     fechaRetorno: getRadio('vasARegresar') !== 'SI' ? '' : (getRadio('tipoRetorno') === 'Inmediato' ? 'Inmediato' : $('fechaRetorno').value),
@@ -205,13 +207,13 @@ async function triggerSync() {
 async function syncMasterData() {
   if (!navigator.onLine) return;
   try {
-    const v = localStorage.getItem('mastersVersionAus1') || '';
+    const v = localStorage.getItem(MASTERS_KEY) || '';
     const res = await fetch(`${GAS_ENDPOINT}?action=GET_MASTERS&v=${encodeURIComponent(v)}`);
     const data = await res.json();
     if (data.status !== 'OK' || data.unchanged) return;
     await DB.setPersonal(data.personal);
     await loadPersonal();
-    localStorage.setItem('mastersVersionAus1', data.version);
+    localStorage.setItem(MASTERS_KEY, data.version);
   } catch (err) { console.warn('No se pudieron actualizar los maestros:', err); }
 }
 
