@@ -28,7 +28,7 @@ const DB = {
       for (const id of ids) await db.ausentismos.update(id, { estado: 'SINCRONIZADO', errorDetail: '' });
     });
   },
-  async retryErrors() { await db.ausentismos.where('estado').equals('ERROR').modify({ estado: 'PENDIENTE' }); },
+  async retryErrors() { await db.ausentismos.where('estado').equals('ERROR').modify({ estado: 'PENDIENTE', errorDetail: '' }); },
   async counts() {
     const [p, e, s] = await Promise.all(['PENDIENTE', 'ERROR', 'SINCRONIZADO'].map(x => db.ausentismos.where('estado').equals(x).count()));
     return { pendientes: p, errores: e, sincronizados: s };
