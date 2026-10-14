@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Agrícola Huarmey - Ausentismo Placas</title>
+  <title>Agrícola Huarmey - Ausentismo del Cosechador</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
@@ -16,12 +16,17 @@
 </head>
 <body>
   <header>
-    <div class="brand"><img class="logo" src="logo.png" alt="Frusan" width="54" height="54"><div><h1>Agrícola Huarmey</h1><p>Registro de ausentismo</p></div></div>
+    <div class="brand"><div><h1>Agrícola Huarmey</h1><p>Registro de ausentismo del cosechador</p></div></div>
     <div id="status" class="pill online"><i></i><span id="status-text">Comprobando…</span></div>
   </header>
 
   <main>
     <section id="view-nuevo" class="view active">
+      <div class="aviso" role="alert">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 21h20L12 3zM12 10v5M12 18h.01"/></svg>
+        <p><strong>Aviso importante</strong>Esta aplicación es para que usted, como personal de la empresa, registre sus faltas. <u>Si no registra en 3 días, se tomará como abandono laboral.</u></p>
+      </div>
+
       <form id="ausentismo-form" novalidate>
 
         <fieldset>
@@ -37,16 +42,18 @@
         <fieldset>
           <legend>Ausencia</legend>
           <div class="field"><label for="fechaFalta">Fecha de falta</label><input type="date" id="fechaFalta" required></div>
-          <div class="field"><label for="motivo">Motivo de ausencia</label>
+          <div class="field"><label for="motivo">Motivo</label>
             <select id="motivo" required>
               <option value="">Seleccione…</option>
               <option>Ninguno</option><option>Descanso médico</option><option>Permiso con papeleta</option>
-              <option>Enfermedad</option><option>Problemas familiares</option><option>Problemas con el conductor</option><option>Estoy en otro trabajo o fundo</option>
-              <option>Me quede dormido</option><option>Sacar tarjeta</option><option>Pago</option><option>Motivos personales</option>
-              <option>Movilidad no paso por el paradero</option><option>Renuncia</option>
+              <option>Enfermedad</option><option>Problemas familiares</option><option>Se cambio a otra movilidad</option><option>Otro trabajo o fundo</option>
+              <option>No llego al paradero</option><option>Sacar tarjeta</option><option>Pago</option><option>Motivos personales</option>
+              <option>Siempre falta y no reporta</option><option>Renuncia</option>
               <option>Problemas con el caporal</option><option>Estudios</option><option>Viaje</option><option>Accidente</option>
-              <option>No desea continuar</option><option>Trámite de documentos</option><option>Reunión del colegio de mi menor</option>
+              <option>No desea continuar</option>
             </select></div>
+          <div class="field"><label for="observaciones">Observaciones <small id="obs-req"></small></label>
+            <textarea id="observaciones" rows="3" placeholder="Detalle lo que el trabajador indicó"></textarea></div>
         </fieldset>
 
         <fieldset>
@@ -84,12 +91,8 @@
         <div><b id="n-ok">0</b><span>Enviados</span></div>
       </div>
       <p id="last-sync" class="muted"></p>
-      <p id="padron-info" class="muted"></p>
       <button id="btn-sync" class="btn">Sincronizar ahora</button>
       <button id="btn-retry" class="btn ghost" hidden>Reintentar los que dieron error</button>
-      <button id="btn-padron" class="btn ghost">Actualizar padrón de trabajadores</button>
-      <button id="btn-diag" class="btn ghost">Probar conexión con Google Sheets</button>
-      <p id="diag" class="muted" style="margin-top:10px;word-break:break-word"></p>
     </section>
   </main>
 
