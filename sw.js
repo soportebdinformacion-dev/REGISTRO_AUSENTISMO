@@ -1,10 +1,10 @@
-const CACHE_NAME = 'ausentismo-placas-v4';
-const STATIC_ASSETS = ['./', './index.html', './styles.css', './app.js', './db.js', './manifest.json', './logo.png', './icon-192.png', './icon-512.png', './favicon.png',
+const CACHE_NAME = 'ausentismo-cosechador-v1';
+const STATIC_ASSETS = ['./', './index.html', './styles.css', './app.js', './db.js', './manifest.json', './icon-192.png', './icon-512.png', './favicon.png',
   'https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js'];
 
 self.addEventListener('install', e => {
-  // allSettled: si falta algún archivo (ej. un icono) la instalación no se cae
-  e.waitUntil(caches.open(CACHE_NAME).then(c => Promise.allSettled(STATIC_ASSETS.map(a => c.add(a)))));
+  // allSettled: si falta un archivo (p. ej. favicon) no se cae toda la instalación
+  e.waitUntil(caches.open(CACHE_NAME).then(c => Promise.allSettled(STATIC_ASSETS.map(u => c.add(u)))));
   self.skipWaiting();
 });
 
