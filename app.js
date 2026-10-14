@@ -1,5 +1,5 @@
 // PEGAR AQUÍ la URL de la implementación (Aplicación web) del Apps Script del archivo AUSENTISMO_PLACAS
-const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyi_eT6kDoYm4guOGWxdtBjnIqp9VhcfjGTU8ox0hp-txwUkSQPXWszGw82iDmwK2fE3Q/exec';
+const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbz90jZ3AL1y2Z_47sSlKFCIIua8E49aK09DgkT1ng6poVS1WrH4M8u1SgsnnIA_3DdJXA/exec';
 const BATCH_SIZE = 25;          // registros por envío
 const SYNC_EVERY_MS = 60000;    // revisión periódica (solo envía si hay pendientes)
 const MASTERS_KEY = 'mastersVersionAus2'; // cambiar este valor fuerza a todos los equipos a volver a descargar el padrón
@@ -66,7 +66,7 @@ function setupEvents() {
   document.querySelectorAll('input[name=vasARegresar], input[name=tipoRetorno]').forEach(r => r.addEventListener('change', toggleRetorno));
 
   $('ausentismo-form').addEventListener('submit', handleFormSubmit);
-  $('btn-sync').addEventListener('click', () => { if (!navigator.onLine) return toast('Sin conexión'); triggerSync(); });
+  $('btn-sync').addEventListener('click', () => { if (!navigator.onLine) return toast('Sin conexión'); triggerSync(true); });
   $('btn-retry').addEventListener('click', async () => { await DB.retryErrors(); await refreshAll(); queueSync(0); });
   $('btn-padron').addEventListener('click', () => syncMasterData(true));
 }
@@ -167,21 +167,26 @@ function queueSync(delay = 0) {
 }
 
 async function postBatch(batch) {
+  let lastErr = '';
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
       const res = await fetch(GAS_ENDPOINT, {
         method: 'POST', headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({ action: 'SYNC_AUSENTISMOS', records: batch })
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); }
+      catch { throw new Error(res.ok ? 'El servidor no devolvió datos válidos (revise el acceso de la implementación: "Cualquier persona")' : 'HTTP ' + res.status); }
       if (data.status === 'SUCCESS') return data;
-    } catch (err) { console.warn('Intento fallido', err); }
+      lastErr = data.message || data.status || 'Respuesta inesperada';
+    } catch (err) { lastErr = err.message || String(err); console.warn('Intento fallido', err); }
     await sleep(Math.min(30000, 1500 * 2 ** attempt) + rand(0, 1500)); // espera exponencial + azar
   }
-  throw new Error('Servidor ocupado');
+  throw new Error(lastErr || 'Servidor ocupado');
 }
 
-async function triggerSync() {
+async function triggerSync(manual = false) {
   if (!navigator.onLine || syncing) return;
   let pending = await DB.getPendingRecords();
   if (!pending.length) return await refreshAll();
@@ -195,8 +200,11 @@ async function triggerSync() {
       pending = await DB.getPendingRecords();
     }
     localStorage.setItem('lastSync', Date.now());
+    localStorage.removeItem('lastSyncError');
     setStatus('online');
   } catch (err) {
+    localStorage.setItem('lastSyncError', err.message || String(err));
+    if (manual === true) toast('No se pudo enviar: ' + (err.message || err));
     setStatus('online', 'Reintentando envío…');
     queueSync(rand(20000, 60000));
   } finally {
@@ -233,7 +241,8 @@ async function refreshAll() {
   $('padron-info').textContent = 'Padrón local: ' + personalIdx.length + ' trabajadores';
   const badge = $('nav-badge'); badge.hidden = !c.pendientes; badge.textContent = c.pendientes;
   const ls = localStorage.getItem('lastSync');
-  $('last-sync').textContent = ls ? 'Último envío: ' + new Date(+ls).toLocaleString('es-PE') : 'Aún no se ha enviado nada';
+  const lerr = localStorage.getItem('lastSyncError');
+  $('last-sync').textContent = (ls ? 'Último envío: ' + new Date(+ls).toLocaleString('es-PE') : 'Aún no se ha enviado nada') + (lerr ? ' · Error: ' + lerr : '');
 
   $('records-list').innerHTML = records.length ? records.map(r => `
     <article class="record ${esc(r.estado)}">
