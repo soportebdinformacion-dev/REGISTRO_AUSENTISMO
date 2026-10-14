@@ -1,5 +1,5 @@
 // PEGAR AQUÍ la URL de la implementación (Aplicación web) del Apps Script del archivo AUSENTISMO_PLACAS
-const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwF0gjGm4kIUVOYdQ4vvNKzIajtvFiiqAsFv0b2W4keFxvAPyvGaXCB7Pf-0gq1gk1JBw/exec';
+const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyi_eT6kDoYm4guOGWxdtBjnIqp9VhcfjGTU8ox0hp-txwUkSQPXWszGw82iDmwK2fE3Q/exec';
 const BATCH_SIZE = 25;          // registros por envío
 const SYNC_EVERY_MS = 60000;    // revisión periódica (solo envía si hay pendientes)
 const MASTERS_KEY = 'mastersVersionAus2'; // cambiar este valor fuerza a todos los equipos a volver a descargar el padrón
@@ -68,6 +68,7 @@ function setupEvents() {
   $('ausentismo-form').addEventListener('submit', handleFormSubmit);
   $('btn-sync').addEventListener('click', () => { if (!navigator.onLine) return toast('Sin conexión'); triggerSync(); });
   $('btn-retry').addEventListener('click', async () => { await DB.retryErrors(); await refreshAll(); queueSync(0); });
+  $('btn-padron').addEventListener('click', () => syncMasterData(true));
 }
 
 const getRadio = name => document.querySelector(`input[name=${name}]:checked`).value;
@@ -204,17 +205,24 @@ async function triggerSync() {
   }
 }
 
-async function syncMasterData() {
-  if (!navigator.onLine) return;
+async function syncMasterData(manual = false) {
+  if (!navigator.onLine) { if (manual === true) toast('Sin conexión'); return; }
   try {
-    const v = localStorage.getItem(MASTERS_KEY) || '';
+    const v = manual === true ? '' : (localStorage.getItem(MASTERS_KEY) || ''); // manual: fuerza descarga completa
     const res = await fetch(`${GAS_ENDPOINT}?action=GET_MASTERS&v=${encodeURIComponent(v)}`);
     const data = await res.json();
-    if (data.status !== 'OK' || data.unchanged) return;
-    await DB.setPersonal(data.personal);
-    await loadPersonal();
-    localStorage.setItem(MASTERS_KEY, data.version);
-  } catch (err) { console.warn('No se pudieron actualizar los maestros:', err); }
+    if (data.status !== 'OK') throw new Error(data.message || 'Respuesta no válida del servidor');
+    if (!data.unchanged) {
+      await DB.setPersonal(data.personal);
+      await loadPersonal();
+      localStorage.setItem(MASTERS_KEY, data.version);
+    }
+    await refreshAll();
+    if (manual === true) toast('Padrón actualizado: ' + personalIdx.length + ' trabajadores');
+  } catch (err) {
+    console.warn('No se pudieron actualizar los maestros:', err);
+    if (manual === true) toast('No se pudo actualizar: ' + err.message);
+  }
 }
 
 // ===== Pantallas =====
@@ -222,6 +230,7 @@ async function refreshAll() {
   const [records, c] = await Promise.all([DB.getAllRecords(), DB.counts()]);
   $('n-pend').textContent = c.pendientes; $('n-err').textContent = c.errores; $('n-ok').textContent = c.sincronizados;
   $('btn-retry').hidden = !c.errores;
+  $('padron-info').textContent = 'Padrón local: ' + personalIdx.length + ' trabajadores';
   const badge = $('nav-badge'); badge.hidden = !c.pendientes; badge.textContent = c.pendientes;
   const ls = localStorage.getItem('lastSync');
   $('last-sync').textContent = ls ? 'Último envío: ' + new Date(+ls).toLocaleString('es-PE') : 'Aún no se ha enviado nada';
