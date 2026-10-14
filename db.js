@@ -1,4 +1,4 @@
-const db = new Dexie('AusentismoPlacasDB');
+const db = new Dexie('AusentismoCosechadorDB');
 db.version(1).stores({
   personal: 'dni',
   ausentismos: 'id, estado, fechaRegistro'
@@ -12,7 +12,7 @@ const normDni = d => {
 const DB = {
   async setPersonal(data) {
     const rows = (data || []).map(r => ({ dni: normDni(r.dni), nombre: r.nombre })).filter(r => r.dni);
-    if (!rows.length) return; // nunca vaciar el caché local con datos vacíos
+    if (!rows.length) return;
     await db.transaction('rw', db.personal, async () => { await db.personal.clear(); await db.personal.bulkPut(rows); });
   },
   async getPersonalByDNI(dni) { return db.personal.get(normDni(dni)); },
@@ -28,7 +28,7 @@ const DB = {
       for (const id of ids) await db.ausentismos.update(id, { estado: 'SINCRONIZADO', errorDetail: '' });
     });
   },
-  async retryErrors() { await db.ausentismos.where('estado').equals('ERROR').modify({ estado: 'PENDIENTE', errorDetail: '' }); },
+  async retryErrors() { await db.ausentismos.where('estado').equals('ERROR').modify({ estado: 'PENDIENTE' }); },
   async counts() {
     const [p, e, s] = await Promise.all(['PENDIENTE', 'ERROR', 'SINCRONIZADO'].map(x => db.ausentismos.where('estado').equals(x).count()));
     return { pendientes: p, errores: e, sincronizados: s };
