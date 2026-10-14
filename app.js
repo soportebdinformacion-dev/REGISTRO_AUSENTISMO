@@ -1,12 +1,9 @@
-// PEGAR AQUÍ la URL de la implementación (Aplicación web) del Apps Script del archivo AUSENTISMO_PLACAS
-const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbxdH3Q0x8FMCVfe0wNST61wA-HhtSc1KoPaxKG-r8VC1jESrPQ_TdZj4i1S2VRHPf_q7w/exec';
+const GAS_ENDPOINT = 'PEGAR_AQUI_LA_URL_DE_LA_NUEVA_IMPLEMENTACION/exec';
 const BATCH_SIZE = 25;          // registros por envío
 const SYNC_EVERY_MS = 60000;    // revisión periódica (solo envía si hay pendientes)
-const MASTERS_KEY = 'mastersVersionAus2'; // cambiar este valor fuerza a todos los equipos a volver a descargar el padrón
+const MOTIVOS_CON_DETALLE = ['Otro trabajo o fundo', 'Renuncia', 'Problemas con el caporal', 'No desea continuar'];
 
-// Si algún elemento no existe en el HTML (archivos desactualizados) la app no se cae
-const stub = () => ({ classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {}, style: {}, focus() {}, hidden: false, value: '', dataset: {} });
-const $ = id => document.getElementById(id) || stub();
+const $ = id => document.getElementById(id);
 const rand = (min, max) => min + Math.random() * (max - min);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -20,7 +17,7 @@ async function initApp() {
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(console.error);
   setupEvents();
   setStatus(navigator.onLine ? 'online' : 'offline');
-  initDefaults();
+  await loadDropdowns();
   await loadPersonal();
   await refreshAll();
   // Escalonar para que 160 equipos no pidan todos a la vez
@@ -59,6 +56,13 @@ function setupEvents() {
     if (b) elegir(lastResults[+b.dataset.i]);
   });
 
+  $('motivo').addEventListener('change', e => {
+    const req = MOTIVOS_CON_DETALLE.includes(e.target.value);
+    $('observaciones').required = req;
+    $('obs-req').textContent = req ? '(obligatorio para este motivo)' : '(opcional)';
+    $('obs-req').className = req ? 'req' : '';
+  });
+
   const toggleRetorno = () => {
     const si = getRadio('vasARegresar') === 'SI';
     $('group-retorno').hidden = !si;                       // NO / Lo piensa: no se muestra nada
@@ -68,10 +72,8 @@ function setupEvents() {
   document.querySelectorAll('input[name=vasARegresar], input[name=tipoRetorno]').forEach(r => r.addEventListener('change', toggleRetorno));
 
   $('ausentismo-form').addEventListener('submit', handleFormSubmit);
-  $('btn-sync').addEventListener('click', () => { if (!navigator.onLine) return toast('Sin conexión'); triggerSync(true); });
+  $('btn-sync').addEventListener('click', () => { if (!navigator.onLine) return toast('Sin conexión'); triggerSync(); });
   $('btn-retry').addEventListener('click', async () => { await DB.retryErrors(); await refreshAll(); queueSync(0); });
-  $('btn-padron').addEventListener('click', () => syncMasterData(true));
-  $('btn-diag').addEventListener('click', probarConexion);
 }
 
 const getRadio = name => document.querySelector(`input[name=${name}]:checked`).value;
@@ -81,8 +83,7 @@ let personalIdx = [], lastResults = [];
 const norm = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
 async function loadPersonal() {
-  // normDni (db.js) completa los ceros iniciales: 2354605 -> 02354605
-  personalIdx = (await DB.getAllPersonal()).map(p => ({ dni: normDni(p.dni), nombre: p.nombre, words: norm(p.nombre).split(' ') }));
+  personalIdx = (await DB.getAllPersonal()).map(p => ({ dni: p.dni, nombre: p.nombre, words: norm(p.nombre).split(' ') }));
 }
 
 // Sin importar mayúsculas, tildes ni orden; cada palabra escrita puede ser el inicio de una del nombre
@@ -105,7 +106,7 @@ function showResults(list, emptyMsg) {
 
 function elegir(p) {
   if (!p) return;
-  $('dni').value = normDni(p.dni); $('nombre').value = p.nombre; $('buscar').value = p.nombre;
+  $('dni').value = p.dni; $('nombre').value = p.nombre; $('buscar').value = p.nombre;
   $('buscar').classList.remove('invalid');
   showResults([]);
   const hint = $('dni-alert'); hint.textContent = 'Trabajador seleccionado'; hint.className = 'hint good';
@@ -125,16 +126,17 @@ function onBuscar(e) {
   showResults(res, raw.length >= 2 && !res.length ? 'Sin coincidencias' : '');
 }
 
-function initDefaults() {
+async function loadDropdowns() {
   if (!$('fechaFalta').value) $('fechaFalta').value = today();
 }
 
 function validate() {
   const bad = [];
   const check = (id, ok) => { $(id).classList.toggle('invalid', !ok); if (!ok) bad.push(id); };
-  check('buscar', /^\d{8}$/.test(normDni($('dni').value)));
+  check('buscar', /^\d{8}$/.test($('dni').value));
   check('fechaFalta', !!$('fechaFalta').value);
   check('motivo', !!$('motivo').value);
+  check('observaciones', !$('observaciones').required || !!$('observaciones').value.trim());
   if (getRadio('vasARegresar') === 'SI' && getRadio('tipoRetorno') === 'Específica') check('fechaRetorno', !!$('fechaRetorno').value && $('fechaRetorno').value >= $('fechaFalta').value);
   if (bad.length) { $(bad[0]).focus(); toast('Revise los campos marcados'); }
   return !bad.length;
@@ -147,8 +149,8 @@ async function handleFormSubmit(e) {
   const record = {
     id: 'REG-' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2)),
     fechaRegistro: new Date().toISOString(),
-    dni: normDni($('dni').value), nombre: $('nombre').value,
-    fechaFalta: $('fechaFalta').value, motivo: $('motivo').value,
+    dni: $('dni').value, nombre: $('nombre').value,
+    fechaFalta: $('fechaFalta').value, motivo: $('motivo').value, observaciones: $('observaciones').value.trim(),
     vasARegresar: getRadio('vasARegresar'),
     fechaRetorno: getRadio('vasARegresar') !== 'SI' ? '' : (getRadio('tipoRetorno') === 'Inmediato' ? 'Inmediato' : $('fechaRetorno').value),
     estado: 'PENDIENTE', errorDetail: ''
@@ -156,7 +158,8 @@ async function handleFormSubmit(e) {
   await DB.saveAusentismo(record);
   e.target.reset();
   $('nombre').value = ''; $('dni-alert').textContent = ''; showResults([]); $('group-retorno').hidden = false; $('group-fechaRetorno').hidden = true;
-  initDefaults();
+  $('obs-req').textContent = ''; $('observaciones').required = false;
+  await loadDropdowns();
   await refreshAll();
   btn.disabled = false;
   toast(navigator.onLine ? 'Guardado. Se enviará en breve' : 'Guardado sin conexión');
@@ -170,26 +173,21 @@ function queueSync(delay = 0) {
 }
 
 async function postBatch(batch) {
-  let lastErr = '';
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
       const res = await fetch(GAS_ENDPOINT, {
         method: 'POST', headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify({ action: 'SYNC_AUSENTISMOS', records: batch })
       });
-      const text = await res.text();
-      let data;
-      try { data = JSON.parse(text); }
-      catch { throw new Error(res.ok ? 'El servidor no devolvió datos válidos (revise el acceso de la implementación: "Cualquier persona")' : 'HTTP ' + res.status); }
+      const data = await res.json();
       if (data.status === 'SUCCESS') return data;
-      lastErr = data.message || data.status || 'Respuesta inesperada';
-    } catch (err) { lastErr = err.message || String(err); console.warn('Intento fallido', err); }
+    } catch (err) { console.warn('Intento fallido', err); }
     await sleep(Math.min(30000, 1500 * 2 ** attempt) + rand(0, 1500)); // espera exponencial + azar
   }
-  throw new Error(lastErr || 'Servidor ocupado');
+  throw new Error('Servidor ocupado');
 }
 
-async function triggerSync(manual = false) {
+async function triggerSync() {
   if (!navigator.onLine || syncing) return;
   let pending = await DB.getPendingRecords();
   if (!pending.length) return await refreshAll();
@@ -203,11 +201,8 @@ async function triggerSync(manual = false) {
       pending = await DB.getPendingRecords();
     }
     localStorage.setItem('lastSync', Date.now());
-    localStorage.removeItem('lastSyncError');
     setStatus('online');
   } catch (err) {
-    localStorage.setItem('lastSyncError', err.message || String(err));
-    if (manual === true) toast('No se pudo enviar: ' + (err.message || err));
     setStatus('online', 'Reintentando envío…');
     queueSync(rand(20000, 60000));
   } finally {
@@ -216,41 +211,18 @@ async function triggerSync(manual = false) {
   }
 }
 
-async function syncMasterData(manual = false) {
-  if (!navigator.onLine) { if (manual === true) toast('Sin conexión'); return; }
+async function syncMasterData() {
+  if (!navigator.onLine) return;
   try {
-    const v = manual === true ? '' : (localStorage.getItem(MASTERS_KEY) || ''); // manual: fuerza descarga completa
+    const v = localStorage.getItem('mastersVersion3') || '';
     const res = await fetch(`${GAS_ENDPOINT}?action=GET_MASTERS&v=${encodeURIComponent(v)}`);
     const data = await res.json();
-    if (data.status !== 'OK') throw new Error(data.message || 'Respuesta no válida del servidor');
-    if (!data.unchanged) {
-      await DB.setPersonal(data.personal);
-      await loadPersonal();
-      localStorage.setItem(MASTERS_KEY, data.version);
-    }
-    await refreshAll();
-    if (manual === true) toast('Padrón actualizado: ' + personalIdx.length + ' trabajadores');
-  } catch (err) {
-    console.warn('No se pudieron actualizar los maestros:', err);
-    if (manual === true) toast('No se pudo actualizar: ' + err.message);
-  }
-}
-
-// ===== Diagnóstico de conexión =====
-async function probarConexion() {
-  const out = $('diag');
-  out.textContent = 'Probando conexión…';
-  try {
-    const res = await fetch(`${GAS_ENDPOINT}?action=PING`);
-    const text = await res.text();
-    let d;
-    try { d = JSON.parse(text); }
-    catch { throw new Error('El servidor no devolvió datos. Revise que la implementación tenga acceso "Cualquier persona" y que GAS_ENDPOINT sea la URL correcta.'); }
-    if (d.status !== 'OK') throw new Error(d.message === 'Acción GET no válida' ? 'El script no tiene la versión nueva desplegada (Implementar > Administrar implementaciones > Nueva versión).' : (d.message || 'Respuesta inesperada'));
-    out.textContent = 'Conexión OK · Hojas: ' + d.hojas.join(', ') + ' · maestros: ' + d.maestros + ' trabajadores · Reporte: ' + d.reporte;
-  } catch (err) {
-    out.textContent = 'FALLA: ' + (err.message || err);
-  }
+    if (data.status !== 'OK' || data.unchanged) return;
+    await DB.setPersonal(data.personal);
+    await loadPersonal();
+    localStorage.setItem('mastersVersion3', data.version);
+    await loadDropdowns();
+  } catch (err) { console.warn('No se pudieron actualizar los maestros:', err); }
 }
 
 // ===== Pantallas =====
@@ -258,11 +230,9 @@ async function refreshAll() {
   const [records, c] = await Promise.all([DB.getAllRecords(), DB.counts()]);
   $('n-pend').textContent = c.pendientes; $('n-err').textContent = c.errores; $('n-ok').textContent = c.sincronizados;
   $('btn-retry').hidden = !c.errores;
-  $('padron-info').textContent = 'Padrón local: ' + personalIdx.length + ' trabajadores';
   const badge = $('nav-badge'); badge.hidden = !c.pendientes; badge.textContent = c.pendientes;
   const ls = localStorage.getItem('lastSync');
-  const lerr = localStorage.getItem('lastSyncError');
-  $('last-sync').textContent = (ls ? 'Último envío: ' + new Date(+ls).toLocaleString('es-PE') : 'Aún no se ha enviado nada') + (lerr ? ' · Error: ' + lerr : '');
+  $('last-sync').textContent = ls ? 'Último envío: ' + new Date(+ls).toLocaleString('es-PE') : 'Aún no se ha enviado nada';
 
   $('records-list').innerHTML = records.length ? records.map(r => `
     <article class="record ${esc(r.estado)}">
