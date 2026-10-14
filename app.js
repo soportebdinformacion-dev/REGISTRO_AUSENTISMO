@@ -1,5 +1,5 @@
 // PEGAR AQUÍ la URL de la implementación (Aplicación web) del Apps Script del archivo AUSENTISMO_PLACAS
-const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzbTKD07WF4C1nxbS43hZrwQTxm9zVo4uq1ggwk0ot8m3rBLqyapGIyOpP9wh-l88AHyQ/exec';
+const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbwF0gjGm4kIUVOYdQ4vvNKzIajtvFiiqAsFv0b2W4keFxvAPyvGaXCB7Pf-0gq1gk1JBw/exec';
 const BATCH_SIZE = 25;          // registros por envío
 const SYNC_EVERY_MS = 60000;    // revisión periódica (solo envía si hay pendientes)
 const MASTERS_KEY = 'mastersVersionAus2'; // cambiar este valor fuerza a todos los equipos a volver a descargar el padrón
