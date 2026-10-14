@@ -1,10 +1,12 @@
 // PEGAR AQUÍ la URL de la implementación (Aplicación web) del Apps Script del archivo AUSENTISMO_PLACAS
-const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbz90jZ3AL1y2Z_47sSlKFCIIua8E49aK09DgkT1ng6poVS1WrH4M8u1SgsnnIA_3DdJXA/exec';
+const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbxdH3Q0x8FMCVfe0wNST61wA-HhtSc1KoPaxKG-r8VC1jESrPQ_TdZj4i1S2VRHPf_q7w/exec';
 const BATCH_SIZE = 25;          // registros por envío
 const SYNC_EVERY_MS = 60000;    // revisión periódica (solo envía si hay pendientes)
 const MASTERS_KEY = 'mastersVersionAus2'; // cambiar este valor fuerza a todos los equipos a volver a descargar el padrón
 
-const $ = id => document.getElementById(id);
+// Si algún elemento no existe en el HTML (archivos desactualizados) la app no se cae
+const stub = () => ({ classList: { add() {}, remove() {}, toggle() {} }, addEventListener() {}, style: {}, focus() {}, hidden: false, value: '', dataset: {} });
+const $ = id => document.getElementById(id) || stub();
 const rand = (min, max) => min + Math.random() * (max - min);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -69,6 +71,7 @@ function setupEvents() {
   $('btn-sync').addEventListener('click', () => { if (!navigator.onLine) return toast('Sin conexión'); triggerSync(true); });
   $('btn-retry').addEventListener('click', async () => { await DB.retryErrors(); await refreshAll(); queueSync(0); });
   $('btn-padron').addEventListener('click', () => syncMasterData(true));
+  $('btn-diag').addEventListener('click', probarConexion);
 }
 
 const getRadio = name => document.querySelector(`input[name=${name}]:checked`).value;
@@ -230,6 +233,23 @@ async function syncMasterData(manual = false) {
   } catch (err) {
     console.warn('No se pudieron actualizar los maestros:', err);
     if (manual === true) toast('No se pudo actualizar: ' + err.message);
+  }
+}
+
+// ===== Diagnóstico de conexión =====
+async function probarConexion() {
+  const out = $('diag');
+  out.textContent = 'Probando conexión…';
+  try {
+    const res = await fetch(`${GAS_ENDPOINT}?action=PING`);
+    const text = await res.text();
+    let d;
+    try { d = JSON.parse(text); }
+    catch { throw new Error('El servidor no devolvió datos. Revise que la implementación tenga acceso "Cualquier persona" y que GAS_ENDPOINT sea la URL correcta.'); }
+    if (d.status !== 'OK') throw new Error(d.message === 'Acción GET no válida' ? 'El script no tiene la versión nueva desplegada (Implementar > Administrar implementaciones > Nueva versión).' : (d.message || 'Respuesta inesperada'));
+    out.textContent = 'Conexión OK · Hojas: ' + d.hojas.join(', ') + ' · maestros: ' + d.maestros + ' trabajadores · Reporte: ' + d.reporte;
+  } catch (err) {
+    out.textContent = 'FALLA: ' + (err.message || err);
   }
 }
 
