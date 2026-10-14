@@ -1,6 +1,6 @@
 {
-  "short_name": "AusentismoApp",
-  "name": "Agrícola Huarmey - Ausentismo Placas",
+  "short_name": "Ausentismo",
+  "name": "Agrícola Huarmey - Ausentismo del Cosechador",
   "icons": [
     { "src": "icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any maskable" },
     { "src": "icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any maskable" }
