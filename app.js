@@ -1,4 +1,4 @@
-const GAS_ENDPOINT = 'PEGAR_AQUI_LA_URL_DE_LA_NUEVA_IMPLEMENTACION/exec';
+const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzp0I5WjwuKcCgMlv1xNTTMl9PZ4cv5BwhnVZwuSpblbiSDqJpxjZweNz1ZHoBFdHB--Q/exec';
 const BATCH_SIZE = 25;          // registros por envío
 const SYNC_EVERY_MS = 60000;    // revisión periódica (solo envía si hay pendientes)
 const MOTIVOS_CON_DETALLE = ['Otro trabajo o fundo', 'Renuncia', 'Problemas con el caporal', 'No desea continuar'];
